@@ -26,6 +26,7 @@ def load_current_resource
   @manage_home = bool(new_resource.manage_home, node['user']['manage_home'])
   @create_group = bool(new_resource.create_group, node['user']['create_group'])
   @ssh_keygen = bool(new_resource.ssh_keygen, node['user']['ssh_keygen'])
+  @sudoer = bool(new_resource.sudoer, node['user']['sudoer'])
 end
 
 action :create do
@@ -33,9 +34,13 @@ action :create do
   dir_resource              :create
   authorized_keys_resource  :create
   keygen_resource           :create
+  bashrc_resource           :create
+  sudoer_resource           :create
 end
 
 action :remove do
+  sudoer_resource           :delete
+  bashrc_resource           :delete
   keygen_resource           :delete
   authorized_keys_resource  :delete
   dir_resource              :delete
@@ -168,6 +173,44 @@ def keygen_resource(exec_action)
         action :delete
       end
       new_resource.updated_by_last_action(true) if r.updated_by_last_action?
+    end
+  end
+end
+
+# TODO: different shell options (zshrc, etc.)
+def bashrc_resource(exec_action)
+  template "#{@my_home}/.bashrc" do
+    cookbook  'user'
+    source    'bashrc.erb'      # This doesn't really need to be a template...
+    owner     new_resource.username
+    group     Etc.getpwnam(new_resource.username).gid
+    mode      '0644'
+    action    :nothing
+  end.run_action(exec_action)
+end
+
+def sudoer_resource(exec_action)
+  directory "/etc/sudoers.d" do
+    owner "root"
+    group "root"
+    mode "0750"
+  end
+
+  e = template "/etc/sudoers.d/#{new_resource.username}" do
+    cookbook   'user'
+    source     'sudoer.erb'
+    owner      'root'
+    group      'root'
+    mode       '0440'
+    action     :nothing
+    variables  :user => new_resource.username
+  end
+  e.run_action(:create) if @sudoer && exec_action == :create
+
+  if exec_action == :delete then
+    file "/etc/sudoers/#{new_resource.username}" do
+      backup false
+      action :delete
     end
   end
 end

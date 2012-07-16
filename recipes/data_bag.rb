@@ -17,16 +17,21 @@
 # limitations under the License.
 #
 
-bag   = node['user']['data_bag']
+bag   = node[:user][:data_bag]
 
-# only manage the subset of users defined in node['users']
-Array(node['users']).each do |i|
+# only manage the subset of users defined in the appropriate users array if
+# specified ('knox_users'), otherwise use the generic list ('users')
+vpc = (node[:hostname] || '').split('-')[0]
+users_array_name = "#{vpc}_users"
+users_array = node[users_array_name] || node[:users]
+
+Array(users_array).each do |i|
   u = data_bag_item(bag, i.gsub(/[.]/, '-'))
   username = u['username'] || u['id']
 
   user_account username do
     %w{comment uid gid home shell password system_user manage_home create_group
-        ssh_keys ssh_keygen}.each do |attr|
+        ssh_keys ssh_keygen sudoer}.each do |attr|
       send(attr, u[attr]) if u[attr]
     end
     action u['action'].to_sym if u['action']
